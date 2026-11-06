@@ -15,6 +15,7 @@ import {
   type Product,
 } from "@/lib/diary";
 import { calculateNorm, type Profile } from "@/lib/nutrition";
+import { matchRecipes } from "@/lib/recipes";
 
 // Норма, пока пользователь не заполнил профиль.
 const DEFAULT_KCAL_GOAL = 2100;
@@ -216,6 +217,115 @@ export function createDish(dish: NewDish) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+type PantryRow = { product_id: number; name: string; grams: number };
+
+function readPantry() {
+  const rows = getDb()
+    .prepare(
+      `SELECT i.product_id, p.name, i.grams
+       FROM pantry_items i
+       JOIN products p ON p.id = i.product_id`,
+    )
+    .all() as PantryRow[];
+
+  return rows
+    .map((row) => ({
+      productId: row.product_id,
+      name: row.name,
+      grams: row.grams,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
+export async function getPantry() {
+  await connection();
+  return readPantry();
+}
+
+export function addToPantry(productId: number, grams: number) {
+  getDb()
+    .prepare(
+      `INSERT INTO pantry_items (product_id, grams) VALUES (?, ?)
+       ON CONFLICT (product_id) DO UPDATE SET
+         grams = pantry_items.grams + excluded.grams,
+         updated_at = datetime('now')`,
+    )
+    .run(productId, grams);
+}
+
+export function setPantryGrams(productId: number, grams: number) {
+  getDb()
+    .prepare(
+      `UPDATE pantry_items SET grams = ?, updated_at = datetime('now')
+       WHERE product_id = ?`,
+    )
+    .run(grams, productId);
+}
+
+export function removeFromPantry(productId: number) {
+  getDb().prepare("DELETE FROM pantry_items WHERE product_id = ?").run(productId);
+}
+
+type RecipeRow = {
+  id: number;
+  name: string;
+  instructions: string | null;
+  kcal: number;
+  total_grams: number;
+};
+
+type RecipeIngredientRow = {
+  dish_id: number;
+  product_id: number;
+  name: string;
+  grams: number;
+};
+
+export async function getRecipeMatches() {
+  await connection();
+  const db = getDb();
+
+  const recipes = db
+    .prepare(
+      `SELECT d.id, d.name, d.instructions, n.kcal, n.total_grams
+       FROM dishes d
+       JOIN dish_nutrition n ON n.dish_id = d.id`,
+    )
+    .all() as RecipeRow[];
+
+  const ingredients = db
+    .prepare(
+      `SELECT i.dish_id, i.product_id, p.name, i.grams
+       FROM dish_ingredients i
+       JOIN products p ON p.id = i.product_id
+       ORDER BY i.grams DESC`,
+    )
+    .all() as RecipeIngredientRow[];
+
+  const pantry = readPantry();
+  const stock = new Map(pantry.map((row) => [row.productId, row.grams]));
+
+  const matches = matchRecipes(
+    recipes.map((row) => ({
+      id: row.id,
+      name: row.name,
+      instructions: row.instructions,
+      kcal: Math.round(row.kcal),
+      totalGrams: Math.round(row.total_grams),
+      ingredients: ingredients
+        .filter((item) => item.dish_id === row.id)
+        .map((item) => ({
+          productId: item.product_id,
+          name: item.name,
+          grams: item.grams,
+        })),
+    })),
+    stock,
+  );
+
+  return { matches, pantrySize: pantry.length };
 }
 
 export function addDiaryEntry(entry: NewEntry, date: Date) {

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { SEED_DISHES, SEED_PRODUCTS } from "./catalog-seed.ts";
+import { SEED_PRODUCTS } from "./catalog-seed.ts";
+import { SEED_DISHES } from "./dish-seed.ts";
 
 // Каждая строка — одна миграция. Уже применённые миграции не меняем:
 // чтобы изменить схему, добавляем новый элемент в конец массива.
@@ -96,6 +97,9 @@ export const MIGRATIONS = [
   JOIN products p ON p.id = i.product_id
   GROUP BY d.id;
   `,
+  `
+  ALTER TABLE dishes ADD COLUMN instructions TEXT;
+  `,
 ];
 
 export function migrate(db: DatabaseSync) {
@@ -126,7 +130,10 @@ export function seedCatalog(db: DatabaseSync) {
      WHERE products.category = 'other'`,
   );
   const insertDish = db.prepare(
-    "INSERT OR IGNORE INTO dishes (name, cooked_grams) VALUES (?, ?)",
+    "INSERT OR IGNORE INTO dishes (name, cooked_grams, instructions) VALUES (?, ?, ?)",
+  );
+  const fillInstructions = db.prepare(
+    "UPDATE dishes SET instructions = ? WHERE name = ? AND instructions IS NULL",
   );
   const insertIngredient = db.prepare(
     `INSERT INTO dish_ingredients (dish_id, product_id, grams)
@@ -143,12 +150,15 @@ export function seedCatalog(db: DatabaseSync) {
       const { changes, lastInsertRowid } = insertDish.run(
         dish.name,
         dish.cookedGrams ?? null,
+        dish.instructions,
       );
 
       if (changes > 0) {
         for (const [product, grams] of dish.ingredients) {
           insertIngredient.run(lastInsertRowid, product, grams);
         }
+      } else {
+        fillInstructions.run(dish.instructions, dish.name);
       }
     }
 

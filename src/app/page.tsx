@@ -27,6 +27,21 @@ async function Today() {
         </Link>
       </header>
 
+      <nav aria-label="Разделы" className="grid grid-cols-2 gap-2">
+        <Link
+          href="/pantry"
+          className="rounded-xl border border-line px-3 py-2 text-center text-sm transition-colors hover:bg-tint"
+        >
+          Что есть дома
+        </Link>
+        <Link
+          href="/recipes"
+          className="rounded-xl border border-line px-3 py-2 text-center text-sm transition-colors hover:bg-tint"
+        >
+          Подбор рецептов
+        </Link>
+      </nav>
+
       {!summary.hasProfile && (
         <Link
           href="/settings"

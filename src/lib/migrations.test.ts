@@ -2,11 +2,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import {
-  PRODUCT_CATEGORIES,
-  SEED_DISHES,
-  SEED_PRODUCTS,
-} from "./catalog-seed.ts";
+import { PRODUCT_CATEGORIES, SEED_PRODUCTS } from "./catalog-seed.ts";
+import { SEED_DISHES } from "./dish-seed.ts";
 import { migrate, MIGRATIONS, seedCatalog } from "./migrations.ts";
 
 function createDb() {
@@ -57,6 +54,38 @@ test("ингредиенты блюд есть в справочнике", () =>
       assert.ok(names.has(product), `${dish.name}: ${product}`);
     }
   }
+});
+
+test("у каждого рецепта есть инструкция и нет повторов", () => {
+  const names = SEED_DISHES.map((dish) => dish.name);
+  assert.equal(new Set(names).size, names.length);
+  assert.ok(names.length >= 25);
+
+  for (const dish of SEED_DISHES) {
+    assert.ok(dish.instructions.length > 20, dish.name);
+    const products = dish.ingredients.map(([product]) => product);
+    assert.equal(new Set(products).size, products.length, dish.name);
+  }
+});
+
+test("наполнение дописывает инструкции старым блюдам, но не меняет свои", () => {
+  const db = createDb();
+  db.exec(`
+    UPDATE dishes SET instructions = NULL WHERE name = 'Борщ';
+    UPDATE dishes SET instructions = 'Мой способ' WHERE name = 'Оливье';
+  `);
+
+  seedCatalog(db);
+
+  const text = (name: string) =>
+    (
+      db.prepare("SELECT instructions FROM dishes WHERE name = ?").get(name) as {
+        instructions: string;
+      }
+    ).instructions;
+
+  assert.ok(text("Борщ").length > 20);
+  assert.equal(text("Оливье"), "Мой способ");
 });
 
 test("миграция блюд сохраняет записи дневника и свои продукты", () => {
