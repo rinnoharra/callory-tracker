@@ -1,0 +1,129 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState, useState } from "react";
+
+import { addEntryAction, type AddEntryState } from "@/app/add/actions";
+import {
+  Choice,
+  FieldError,
+  inputClass,
+  primaryButtonClass,
+} from "@/components/form-fields";
+import { amountFor, MEALS, type MealId, type Product } from "@/lib/diary";
+import { parseNumber } from "@/lib/nutrition";
+
+const initialState: AddEntryState = { errors: {} };
+
+type AddFoodFormProps = {
+  products: Product[];
+  defaultMeal: MealId;
+};
+
+export function AddFoodForm({ products, defaultMeal }: AddFoodFormProps) {
+  const [state, formAction, pending] = useActionState(
+    addEntryAction,
+    initialState,
+  );
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [grams, setGrams] = useState("100");
+
+  const search = query.trim().toLowerCase();
+  const found = products.filter((product) =>
+    product.name.toLowerCase().includes(search),
+  );
+
+  const selected = products.find((product) => product.id === selectedId);
+  const portion = parseNumber(grams);
+  const hasPreview = selected && portion > 0;
+
+  return (
+    <form action={formAction} className="flex flex-col gap-5" noValidate>
+      <input type="hidden" name="productId" value={selectedId ?? ""} />
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="search" className="text-sm text-ink-muted">
+          Продукт
+        </label>
+        <input
+          id="search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Гречка"
+          autoComplete="off"
+          className={inputClass}
+        />
+
+        {found.length > 0 ? (
+          <ul className="flex max-h-60 flex-col gap-1 overflow-y-auto">
+            {found.map((product) => (
+              <li key={product.id}>
+                <button
+                  type="button"
+                  aria-pressed={product.id === selectedId}
+                  onClick={() => setSelectedId(product.id)}
+                  className="flex w-full justify-between gap-3 rounded-xl border border-transparent px-3 py-2 text-left transition-colors hover:bg-tint aria-pressed:border-brand aria-pressed:bg-tint"
+                >
+                  <span className="min-w-0 truncate">{product.name}</span>
+                  <span className="shrink-0 text-sm text-ink-muted tabular-nums">
+                    {product.kcal} ккал
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3 py-2 text-sm text-ink-muted">
+            Такого продукта пока нет в справочнике.
+          </p>
+        )}
+
+        {!selected && <FieldError message={state.errors.productId} />}
+        <Link
+          href="/products/new"
+          className="text-sm text-ink-muted hover:underline"
+        >
+          Создать свой продукт →
+        </Link>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="grams" className="text-sm text-ink-muted">
+          Порция, г
+        </label>
+        <input
+          id="grams"
+          name="grams"
+          inputMode="decimal"
+          value={grams}
+          onChange={(event) => setGrams(event.target.value)}
+          className={inputClass}
+        />
+        <FieldError message={state.errors.grams} />
+      </div>
+
+      <Choice
+        legend="Приём пищи"
+        name="meal"
+        options={MEALS}
+        value={state.meal ?? defaultMeal}
+        error={state.errors.meal}
+      />
+
+      {hasPreview && (
+        <p className="rounded-xl bg-tint p-3 text-sm tabular-nums">
+          {selected.name}: {Math.round(amountFor(selected.kcal, portion))} ккал,
+          белки {Math.round(amountFor(selected.protein, portion))} г, жиры{" "}
+          {Math.round(amountFor(selected.fat, portion))} г, углеводы{" "}
+          {Math.round(amountFor(selected.carbs, portion))} г
+        </p>
+      )}
+
+      <button type="submit" disabled={pending} className={primaryButtonClass}>
+        {pending ? "Добавляем…" : "Добавить"}
+      </button>
+    </form>
+  );
+}

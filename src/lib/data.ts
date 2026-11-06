@@ -3,25 +3,33 @@ import "server-only";
 import { connection } from "next/server";
 
 import { getDb } from "@/lib/db";
+import {
+  amountFor,
+  MEALS,
+  type NewEntry,
+  type NewProduct,
+  type Product,
+} from "@/lib/diary";
 import { calculateNorm, type Profile } from "@/lib/nutrition";
 
 // Норма, пока пользователь не заполнил профиль.
 const DEFAULT_KCAL_GOAL = 2100;
 
-const MEALS = [
-  { id: "breakfast", label: "Завтрак" },
-  { id: "lunch", label: "Обед" },
-  { id: "dinner", label: "Ужин" },
-  { id: "snack", label: "Перекус" },
-] as const;
-
-type MealRow = {
+type EntryRow = {
+  id: number;
   meal: string;
+  grams: number;
+  name: string;
   kcal: number;
   protein: number;
   fat: number;
   carbs: number;
 };
+
+// Локаль en-CA даёт дату в формате ГГГГ-ММ-ДД, как в базе.
+function toDateKey(date: Date) {
+  return date.toLocaleDateString("en-CA");
+}
 
 type ProfileRow = {
   sex: Profile["sex"];
@@ -77,29 +85,79 @@ export function saveProfile(profile: Profile) {
     );
 }
 
+export async function getProducts() {
+  await connection();
+
+  const rows = getDb()
+    .prepare("SELECT * FROM products ORDER BY name")
+    .all() as Product[];
+
+  // Строки node:sqlite — объекты без прототипа, а React передаёт
+  // в клиентские компоненты только обычные объекты.
+  return rows.map((row) => ({ ...row }));
+}
+
+export function productExists(id: number) {
+  return (
+    getDb().prepare("SELECT 1 FROM products WHERE id = ?").get(id) !== undefined
+  );
+}
+
+// Сравниваем в JavaScript: LOWER() в SQLite не понимает кириллицу.
+export function productNameTaken(name: string) {
+  const rows = getDb().prepare("SELECT name FROM products").all() as {
+    name: string;
+  }[];
+  const lowered = name.toLowerCase();
+  return rows.some((row) => row.name.toLowerCase() === lowered);
+}
+
+export function createProduct(product: NewProduct) {
+  getDb()
+    .prepare(
+      `INSERT INTO products (name, kcal, protein, fat, carbs)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(
+      product.name,
+      product.kcal,
+      product.protein,
+      product.fat,
+      product.carbs,
+    );
+}
+
+export function addDiaryEntry(entry: NewEntry, date: Date) {
+  getDb()
+    .prepare(
+      `INSERT INTO diary_entries (eaten_on, meal, product_id, grams)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(toDateKey(date), entry.meal, entry.productId, entry.grams);
+}
+
+export function deleteDiaryEntry(id: number) {
+  getDb().prepare("DELETE FROM diary_entries WHERE id = ?").run(id);
+}
+
 export async function getTodaySummary() {
   const profile = await getProfile();
-
   const now = new Date();
-  // Локаль en-CA даёт дату в формате ГГГГ-ММ-ДД, как в базе.
-  const today = now.toLocaleDateString("en-CA");
 
   const rows = getDb()
     .prepare(
-      `SELECT d.meal,
-              SUM(d.grams * p.kcal / 100)    AS kcal,
-              SUM(d.grams * p.protein / 100) AS protein,
-              SUM(d.grams * p.fat / 100)     AS fat,
-              SUM(d.grams * p.carbs / 100)   AS carbs
+      `SELECT d.id, d.meal, d.grams, p.name, p.kcal, p.protein, p.fat, p.carbs
        FROM diary_entries d
        JOIN products p ON p.id = d.product_id
        WHERE d.eaten_on = ?
-       GROUP BY d.meal`,
+       ORDER BY d.id`,
     )
-    .all(today) as MealRow[];
+    .all(toDateKey(now)) as EntryRow[];
 
-  const sum = (key: "kcal" | "protein" | "fat" | "carbs") =>
-    Math.round(rows.reduce((total, row) => total + row[key], 0));
+  const sum = (key: "kcal" | "protein" | "fat" | "carbs", list = rows) =>
+    Math.round(
+      list.reduce((total, row) => total + amountFor(row[key], row.grams), 0),
+    );
 
   return {
     dateLabel: now.toLocaleDateString("ru-RU", {
@@ -113,10 +171,20 @@ export async function getTodaySummary() {
     protein: sum("protein"),
     fat: sum("fat"),
     carbs: sum("carbs"),
-    meals: MEALS.map(({ id, label }) => ({
-      id,
-      label,
-      kcal: Math.round(rows.find((row) => row.meal === id)?.kcal ?? 0),
-    })),
+    meals: MEALS.map(({ id, label }) => {
+      const entries = rows.filter((row) => row.meal === id);
+
+      return {
+        id,
+        label,
+        kcal: sum("kcal", entries),
+        entries: entries.map((row) => ({
+          id: row.id,
+          name: row.name,
+          grams: row.grams,
+          kcal: Math.round(amountFor(row.kcal, row.grams)),
+        })),
+      };
+    }),
   };
 }

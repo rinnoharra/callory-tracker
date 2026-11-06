@@ -84,7 +84,7 @@ export function calculateNorm(profile: Profile, now: Date) {
   };
 }
 
-function parseNumber(value: string) {
+export function parseNumber(value: string) {
   const text = value.trim().replace(",", ".");
   return text === "" ? NaN : Number(text);
 }

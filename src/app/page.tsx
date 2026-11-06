@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { deleteEntryAction } from "@/app/add/actions";
 import { CalorieRing } from "@/components/calorie-ring";
+import { primaryButtonClass } from "@/components/form-fields";
 import { MacroStat } from "@/components/macro-stat";
 import { getTodaySummary } from "@/lib/data";
 
@@ -51,22 +53,48 @@ async function Today() {
       <section aria-label="Приёмы пищи">
         <ul className="divide-y divide-tint">
           {summary.meals.map((meal) => (
-            <li key={meal.id} className="flex justify-between py-3">
-              <span>{meal.label}</span>
-              <span className="text-ink-muted tabular-nums">
-                {meal.kcal > 0 ? `${meal.kcal} ккал` : "—"}
-              </span>
+            <li key={meal.id} className="py-3">
+              <div className="flex justify-between">
+                <span>{meal.label}</span>
+                <span className="text-ink-muted tabular-nums">
+                  {meal.entries.length > 0 ? `${meal.kcal} ккал` : "—"}
+                </span>
+              </div>
+              {meal.entries.length > 0 && (
+                <ul className="mt-1 flex flex-col">
+                  {meal.entries.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-center justify-between gap-2 text-sm text-ink-muted"
+                    >
+                      <span className="min-w-0 truncate">
+                        {entry.name}, {entry.grams} г
+                      </span>
+                      <span className="ml-auto shrink-0 tabular-nums">
+                        {entry.kcal}
+                      </span>
+                      <form action={deleteEntryAction}>
+                        <input type="hidden" name="id" value={entry.id} />
+                        <button
+                          type="submit"
+                          aria-label={`Удалить: ${entry.name}`}
+                          className="flex size-8 items-center justify-center rounded-lg text-lg leading-none transition-colors hover:bg-tint"
+                        >
+                          ×
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
       </section>
 
-      <button
-        type="button"
-        className="mt-auto rounded-xl bg-brand px-4 py-3 font-medium text-surface transition-colors hover:bg-brand-hover"
-      >
+      <Link href="/add" className={`sticky bottom-4 mt-auto ${primaryButtonClass}`}>
         Добавить еду
-      </button>
+      </Link>
     </>
   );
 }
