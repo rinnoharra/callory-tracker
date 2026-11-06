@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Цвета стиля «Свежий». В разметке используем только эти имена:
+   bg-tint, text-ink, border-line и так далее. */
+@theme {
+  --color-surface: #ffffff;
+  --color-ink: #04342c;
+  --color-ink-muted: #0f6e56;
+  --color-brand: #0f6e56;
+  --color-brand-hover: #085041;
+  --color-accent: #1d9e75;
+  --color-tint: #e1f5ee;
+  --color-line: #9fe1cb;
+  --color-over: #d85a30;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
