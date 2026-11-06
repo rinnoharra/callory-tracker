@@ -2,10 +2,13 @@ import "server-only";
 
 import { connection } from "next/server";
 
+import { PRODUCT_CATEGORIES } from "@/lib/catalog-seed";
 import { getDb } from "@/lib/db";
 import {
   amountFor,
   MEALS,
+  type CatalogItem,
+  type ItemKind,
   type NewEntry,
   type NewProduct,
   type Product,
@@ -85,22 +88,72 @@ export function saveProfile(profile: Profile) {
     );
 }
 
-export async function getProducts() {
-  await connection();
+const DISH_CATEGORY = { id: "dishes", label: "Блюда" };
 
-  const rows = getDb()
-    .prepare("SELECT * FROM products ORDER BY name")
-    .all() as Product[];
+type ProductRow = Product & { category: string };
+type DishRow = Omit<Product, "id"> & { dish_id: number };
+type IngredientRow = { dish_id: number; name: string; grams: number };
+
+export async function getCatalog() {
+  await connection();
+  const db = getDb();
+
+  const products = db.prepare("SELECT * FROM products").all() as ProductRow[];
+  const dishes = db
+    .prepare("SELECT * FROM dish_nutrition")
+    .all() as DishRow[];
+  const ingredients = db
+    .prepare(
+      `SELECT i.dish_id, p.name, i.grams
+       FROM dish_ingredients i
+       JOIN products p ON p.id = i.product_id
+       ORDER BY i.grams DESC`,
+    )
+    .all() as IngredientRow[];
 
   // Строки node:sqlite — объекты без прототипа, а React передаёт
-  // в клиентские компоненты только обычные объекты.
-  return rows.map((row) => ({ ...row }));
+  // в клиентские компоненты только обычные объекты, поэтому собираем новые.
+  const items: CatalogItem[] = [
+    ...products.map(({ id, name, category, kcal, protein, fat, carbs }) => ({
+      key: `product:${id}`,
+      name,
+      category,
+      kcal,
+      protein,
+      fat,
+      carbs,
+    })),
+    ...dishes.map(({ dish_id, name, kcal, protein, fat, carbs }) => ({
+      key: `dish:${dish_id}`,
+      name,
+      category: DISH_CATEGORY.id,
+      kcal: Math.round(kcal),
+      protein,
+      fat,
+      carbs,
+      composition: ingredients
+        .filter((row) => row.dish_id === dish_id)
+        .map((row) => `${row.name} ${row.grams} г`)
+        .join(", "),
+    })),
+  ];
+
+  items.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
+  const categories = [DISH_CATEGORY, ...PRODUCT_CATEGORIES].filter(({ id }) =>
+    items.some((item) => item.category === id),
+  );
+
+  return { items, categories };
 }
 
-export function productExists(id: number) {
-  return (
-    getDb().prepare("SELECT 1 FROM products WHERE id = ?").get(id) !== undefined
-  );
+export function itemExists(kind: ItemKind, id: number) {
+  const query =
+    kind === "product"
+      ? "SELECT 1 FROM products WHERE id = ?"
+      : "SELECT 1 FROM dish_nutrition WHERE dish_id = ?";
+
+  return getDb().prepare(query).get(id) !== undefined;
 }
 
 // Сравниваем в JavaScript: LOWER() в SQLite не понимает кириллицу.
@@ -130,10 +183,16 @@ export function createProduct(product: NewProduct) {
 export function addDiaryEntry(entry: NewEntry, date: Date) {
   getDb()
     .prepare(
-      `INSERT INTO diary_entries (eaten_on, meal, product_id, grams)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO diary_entries (eaten_on, meal, product_id, dish_id, grams)
+       VALUES (?, ?, ?, ?, ?)`,
     )
-    .run(toDateKey(date), entry.meal, entry.productId, entry.grams);
+    .run(
+      toDateKey(date),
+      entry.meal,
+      entry.kind === "product" ? entry.itemId : null,
+      entry.kind === "dish" ? entry.itemId : null,
+      entry.grams,
+    );
 }
 
 export function deleteDiaryEntry(id: number) {
@@ -146,9 +205,15 @@ export async function getTodaySummary() {
 
   const rows = getDb()
     .prepare(
-      `SELECT d.id, d.meal, d.grams, p.name, p.kcal, p.protein, p.fat, p.carbs
+      `SELECT d.id, d.meal, d.grams,
+              COALESCE(p.name, n.name, 'Блюдо без состава') AS name,
+              COALESCE(p.kcal, n.kcal, 0)       AS kcal,
+              COALESCE(p.protein, n.protein, 0) AS protein,
+              COALESCE(p.fat, n.fat, 0)         AS fat,
+              COALESCE(p.carbs, n.carbs, 0)     AS carbs
        FROM diary_entries d
-       JOIN products p ON p.id = d.product_id
+       LEFT JOIN products p ON p.id = d.product_id
+       LEFT JOIN dish_nutrition n ON n.dish_id = d.dish_id
        WHERE d.eaten_on = ?
        ORDER BY d.id`,
     )

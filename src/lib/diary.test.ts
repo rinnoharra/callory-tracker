@@ -30,22 +30,37 @@ test("калории порции считаются от значения на 
 });
 
 test("запись дневника принимает верные данные и запятую", () => {
-  const result = parseEntry({ productId: "3", grams: "150,5", meal: "lunch" });
+  const result = parseEntry({ item: "product:3", grams: "150,5", meal: "lunch" });
   assert.deepEqual(result, {
     ok: true,
-    entry: { productId: 3, grams: 150.5, meal: "lunch" },
+    entry: { kind: "product", itemId: 3, grams: 150.5, meal: "lunch" },
+  });
+});
+
+test("запись дневника принимает блюдо", () => {
+  const result = parseEntry({ item: "dish:7", grams: "300", meal: "dinner" });
+  assert.deepEqual(result, {
+    ok: true,
+    entry: { kind: "dish", itemId: 7, grams: 300, meal: "dinner" },
   });
 });
 
 test("запись дневника отклоняет неверные данные", () => {
-  const result = parseEntry({ productId: "", grams: "0", meal: "brunch" });
+  const result = parseEntry({ item: "", grams: "0", meal: "brunch" });
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.deepEqual(Object.keys(result.errors).sort(), [
       "grams",
+      "item",
       "meal",
-      "productId",
     ]);
+  }
+});
+
+test("запись дневника отклоняет чужой тип ссылки", () => {
+  for (const item of ["user:1", "dish:0", "dish:1; DROP", "product:-1"]) {
+    const result = parseEntry({ item, grams: "100", meal: "lunch" });
+    assert.equal(result.ok, false, item);
   }
 });
 

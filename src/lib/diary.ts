@@ -20,13 +20,23 @@ export type Product = {
 
 export type NewProduct = Omit<Product, "id">;
 
+export type ItemKind = "product" | "dish";
+
+// Строка для выбора в форме: продукт или блюдо со значениями на 100 г.
+export type CatalogItem = Omit<Product, "id"> & {
+  key: string;
+  category: string;
+  composition?: string;
+};
+
 export type NewEntry = {
-  productId: number;
+  kind: ItemKind;
+  itemId: number;
   grams: number;
   meal: MealId;
 };
 
-export type EntryField = keyof NewEntry;
+export type EntryField = "item" | "grams" | "meal";
 export type EntryErrors = Partial<Record<EntryField, string>>;
 export type ProductField = keyof NewProduct;
 export type ProductErrors = Partial<Record<ProductField, string>>;
@@ -51,10 +61,8 @@ type EntryResult =
 export function parseEntry(raw: Record<EntryField, string>): EntryResult {
   const errors: EntryErrors = {};
 
-  const productId = Number(raw.productId);
-  if (!Number.isInteger(productId) || productId <= 0) {
-    errors.productId = "Выбери продукт";
-  }
+  const item = /^(product|dish):([1-9]\d*)$/.exec(raw.item);
+  if (!item) errors.item = "Выбери продукт или блюдо";
 
   const grams = parseNumber(raw.grams);
   if (!(grams >= 1 && grams <= 5000)) {
@@ -64,11 +72,19 @@ export function parseEntry(raw: Record<EntryField, string>): EntryResult {
   const meal = MEALS.find((m) => m.id === raw.meal)?.id;
   if (!meal) errors.meal = "Выбери приём пищи";
 
-  if (!meal || Object.keys(errors).length > 0) {
+  if (!item || !meal || Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
 
-  return { ok: true, entry: { productId, grams, meal } };
+  return {
+    ok: true,
+    entry: {
+      kind: item[1] as ItemKind,
+      itemId: Number(item[2]),
+      grams,
+      meal,
+    },
+  };
 }
 
 type ProductResult =

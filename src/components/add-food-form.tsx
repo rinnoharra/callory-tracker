@@ -10,41 +10,49 @@ import {
   inputClass,
   primaryButtonClass,
 } from "@/components/form-fields";
-import { amountFor, MEALS, type MealId, type Product } from "@/lib/diary";
+import { amountFor, MEALS, type CatalogItem, type MealId } from "@/lib/diary";
 import { parseNumber } from "@/lib/nutrition";
 
 const initialState: AddEntryState = { errors: {} };
 
 type AddFoodFormProps = {
-  products: Product[];
+  items: CatalogItem[];
+  categories: { id: string; label: string }[];
   defaultMeal: MealId;
 };
 
-export function AddFoodForm({ products, defaultMeal }: AddFoodFormProps) {
+export function AddFoodForm({
+  items,
+  categories,
+  defaultMeal,
+}: AddFoodFormProps) {
   const [state, formAction, pending] = useActionState(
     addEntryAction,
     initialState,
   );
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [category, setCategory] = useState("all");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [grams, setGrams] = useState("100");
 
   const search = query.trim().toLowerCase();
-  const found = products.filter((product) =>
-    product.name.toLowerCase().includes(search),
+  const found = items.filter(
+    (item) =>
+      (category === "all" || item.category === category) &&
+      item.name.toLowerCase().includes(search),
   );
 
-  const selected = products.find((product) => product.id === selectedId);
+  const selected = items.find((item) => item.key === selectedKey);
   const portion = parseNumber(grams);
   const hasPreview = selected && portion > 0;
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <input type="hidden" name="productId" value={selectedId ?? ""} />
+      <input type="hidden" name="item" value={selectedKey ?? ""} />
 
       <div className="flex flex-col gap-2">
         <label htmlFor="search" className="text-sm text-ink-muted">
-          Продукт
+          Продукт или блюдо
         </label>
         <input
           id="search"
@@ -55,20 +63,33 @@ export function AddFoodForm({ products, defaultMeal }: AddFoodFormProps) {
           autoComplete="off"
           className={inputClass}
         />
+        <select
+          aria-label="Категория"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          className={inputClass}
+        >
+          <option value="all">Все категории</option>
+          {categories.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
 
         {found.length > 0 ? (
           <ul className="flex max-h-60 flex-col gap-1 overflow-y-auto">
-            {found.map((product) => (
-              <li key={product.id}>
+            {found.map((item) => (
+              <li key={item.key}>
                 <button
                   type="button"
-                  aria-pressed={product.id === selectedId}
-                  onClick={() => setSelectedId(product.id)}
+                  aria-pressed={item.key === selectedKey}
+                  onClick={() => setSelectedKey(item.key)}
                   className="flex w-full justify-between gap-3 rounded-xl border border-transparent px-3 py-2 text-left transition-colors hover:bg-tint aria-pressed:border-brand aria-pressed:bg-tint"
                 >
-                  <span className="min-w-0 truncate">{product.name}</span>
+                  <span className="min-w-0 truncate">{item.name}</span>
                   <span className="shrink-0 text-sm text-ink-muted tabular-nums">
-                    {product.kcal} ккал
+                    {item.kcal} ккал
                   </span>
                 </button>
               </li>
@@ -76,11 +97,11 @@ export function AddFoodForm({ products, defaultMeal }: AddFoodFormProps) {
           </ul>
         ) : (
           <p className="px-3 py-2 text-sm text-ink-muted">
-            Такого продукта пока нет в справочнике.
+            Здесь такого пока нет.
           </p>
         )}
 
-        {!selected && <FieldError message={state.errors.productId} />}
+        {!selected && <FieldError message={state.errors.item} />}
         <Link
           href="/products/new"
           className="text-sm text-ink-muted hover:underline"
@@ -113,12 +134,17 @@ export function AddFoodForm({ products, defaultMeal }: AddFoodFormProps) {
       />
 
       {hasPreview && (
-        <p className="rounded-xl bg-tint p-3 text-sm tabular-nums">
-          {selected.name}: {Math.round(amountFor(selected.kcal, portion))} ккал,
-          белки {Math.round(amountFor(selected.protein, portion))} г, жиры{" "}
-          {Math.round(amountFor(selected.fat, portion))} г, углеводы{" "}
-          {Math.round(amountFor(selected.carbs, portion))} г
-        </p>
+        <div className="flex flex-col gap-1 rounded-xl bg-tint p-3 text-sm">
+          <p className="tabular-nums">
+            {selected.name}: {Math.round(amountFor(selected.kcal, portion))}{" "}
+            ккал, белки {Math.round(amountFor(selected.protein, portion))} г,
+            жиры {Math.round(amountFor(selected.fat, portion))} г, углеводы{" "}
+            {Math.round(amountFor(selected.carbs, portion))} г
+          </p>
+          {selected.composition && (
+            <p className="text-ink-muted">Состав: {selected.composition}</p>
+          )}
+        </div>
       )}
 
       <button type="submit" disabled={pending} className={primaryButtonClass}>

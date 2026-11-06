@@ -3,17 +3,18 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { AddFoodForm } from "@/components/add-food-form";
-import { getProducts } from "@/lib/data";
+import { getCatalog } from "@/lib/data";
 import { mealForHour } from "@/lib/diary";
 
 export const metadata: Metadata = { title: "Добавить еду — Трекер калорий" };
 
 async function AddFood() {
-  const products = await getProducts();
+  const { items, categories } = await getCatalog();
 
   return (
     <AddFoodForm
-      products={products}
+      items={items}
+      categories={categories}
       defaultMeal={mealForHour(new Date().getHours())}
     />
   );
