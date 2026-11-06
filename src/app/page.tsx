@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 
 import { CalorieRing } from "@/components/calorie-ring";
@@ -9,12 +10,29 @@ async function Today() {
 
   return (
     <>
-      <header>
-        <p className="text-sm text-ink-muted first-letter:uppercase">
-          {summary.dateLabel}
-        </p>
-        <h1 className="text-2xl font-medium tracking-tight">Сегодня</h1>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-ink-muted first-letter:uppercase">
+            {summary.dateLabel}
+          </p>
+          <h1 className="text-2xl font-medium tracking-tight">Сегодня</h1>
+        </div>
+        <Link
+          href="/settings"
+          className="rounded-xl border border-line px-3 py-2 text-sm transition-colors hover:bg-tint"
+        >
+          Профиль
+        </Link>
       </header>
+
+      {!summary.hasProfile && (
+        <Link
+          href="/settings"
+          className="rounded-xl bg-tint p-3 text-sm hover:underline"
+        >
+          Заполни профиль, чтобы рассчитать свою норму калорий →
+        </Link>
+      )}
 
       <section aria-label="Калории за день" className="flex flex-col gap-2">
         <CalorieRing eaten={summary.kcal} goal={summary.goal} />

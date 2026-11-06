@@ -3,9 +3,10 @@ import "server-only";
 import { connection } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { calculateNorm, type Profile } from "@/lib/nutrition";
 
-// Пока нет настроек пользователя, норма одна для всех.
-const DAILY_KCAL_GOAL = 2100;
+// Норма, пока пользователь не заполнил профиль.
+const DEFAULT_KCAL_GOAL = 2100;
 
 const MEALS = [
   { id: "breakfast", label: "Завтрак" },
@@ -22,10 +23,62 @@ type MealRow = {
   carbs: number;
 };
 
-export async function getTodaySummary() {
+type ProfileRow = {
+  sex: Profile["sex"];
+  birth_date: string;
+  height_cm: number;
+  weight_kg: number;
+  activity: Profile["activity"];
+  goal: Profile["goal"];
+};
+
+export async function getProfile(): Promise<Profile | null> {
   // node:sqlite работает синхронно, поэтому без connection() запрос
   // выполнился бы при сборке и страница показывала бы устаревшие данные.
   await connection();
+
+  const row = getDb().prepare("SELECT * FROM profile WHERE id = 1").get() as
+    | ProfileRow
+    | undefined;
+
+  if (!row) return null;
+
+  return {
+    sex: row.sex,
+    birthDate: row.birth_date,
+    heightCm: row.height_cm,
+    weightKg: row.weight_kg,
+    activity: row.activity,
+    goal: row.goal,
+  };
+}
+
+export function saveProfile(profile: Profile) {
+  getDb()
+    .prepare(
+      `INSERT INTO profile (id, sex, birth_date, height_cm, weight_kg, activity, goal)
+       VALUES (1, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         sex = excluded.sex,
+         birth_date = excluded.birth_date,
+         height_cm = excluded.height_cm,
+         weight_kg = excluded.weight_kg,
+         activity = excluded.activity,
+         goal = excluded.goal,
+         updated_at = datetime('now')`,
+    )
+    .run(
+      profile.sex,
+      profile.birthDate,
+      profile.heightCm,
+      profile.weightKg,
+      profile.activity,
+      profile.goal,
+    );
+}
+
+export async function getTodaySummary() {
+  const profile = await getProfile();
 
   const now = new Date();
   // Локаль en-CA даёт дату в формате ГГГГ-ММ-ДД, как в базе.
@@ -54,7 +107,8 @@ export async function getTodaySummary() {
       day: "numeric",
       month: "long",
     }),
-    goal: DAILY_KCAL_GOAL,
+    hasProfile: profile !== null,
+    goal: profile ? calculateNorm(profile, now).target : DEFAULT_KCAL_GOAL,
     kcal: sum("kcal"),
     protein: sum("protein"),
     fat: sum("fat"),

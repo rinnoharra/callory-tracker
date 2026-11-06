@@ -37,6 +37,18 @@ const MIGRATIONS = [
 
   CREATE INDEX diary_entries_eaten_on ON diary_entries (eaten_on);
   `,
+  `
+  CREATE TABLE profile (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    sex        TEXT NOT NULL CHECK (sex IN ('female', 'male')),
+    birth_date TEXT NOT NULL,
+    height_cm  REAL NOT NULL CHECK (height_cm > 0),
+    weight_kg  REAL NOT NULL CHECK (weight_kg > 0),
+    activity   TEXT NOT NULL,
+    goal       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 // Примерные значения на 100 г: name, kcal, protein, fat, carbs.
@@ -83,15 +95,13 @@ function seed(db: DatabaseSync) {
   }
 }
 
-function open() {
+function connect() {
   mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
   const db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   db.exec("PRAGMA busy_timeout = 5000");
-  migrate(db);
-  seed(db);
   return db;
 }
 
@@ -99,7 +109,19 @@ function open() {
 // разработки не открывала новое подключение при каждом изменении кода.
 const globalForDb = globalThis as typeof globalThis & { db?: DatabaseSync };
 
+// Этот флаг живёт в модуле, а не в globalThis: при горячей перезагрузке он
+// сбрасывается, и новые миграции применяются без перезапуска сервера.
+let isReady = false;
+
 export function getDb() {
-  globalForDb.db ??= open();
-  return globalForDb.db;
+  globalForDb.db ??= connect();
+  const db = globalForDb.db;
+
+  if (!isReady) {
+    migrate(db);
+    seed(db);
+    isReady = true;
+  }
+
+  return db;
 }
