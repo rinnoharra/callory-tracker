@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { DishForm } from "@/components/dish-form";
 import { getCatalog } from "@/lib/data";
+import { isPreparedFood } from "@/lib/diary";
 
 export const metadata: Metadata = { title: "Новое блюдо — Трекер калорий" };
 
@@ -11,7 +12,7 @@ async function NewDish() {
   const { items } = await getCatalog();
 
   return (
-    <DishForm products={items.filter((item) => item.key.startsWith("product:"))} />
+    <DishForm products={items.filter((item) => !isPreparedFood(item.category))} />
   );
 }
 

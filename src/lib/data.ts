@@ -89,7 +89,7 @@ export function saveProfile(profile: Profile) {
     );
 }
 
-const DISH_CATEGORY = { id: "dishes", label: "Блюда" };
+const DISH_CATEGORY = { id: "dishes", label: "Блюда с составом" };
 
 type ProductRow = Product & { category: string };
 type DishRow = Omit<Product, "id"> & { dish_id: number };

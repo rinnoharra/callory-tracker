@@ -54,6 +54,12 @@ export function amountFor(per100: number, grams: number) {
   return (per100 * grams) / 100;
 }
 
+// Блюда с составом и готовая еда: то, что едят как есть,
+// а не используют как ингредиент.
+export function isPreparedFood(category: string) {
+  return category === "dishes" || category === "ready";
+}
+
 export type NewDish = {
   name: string;
   cookedGrams: number | null;

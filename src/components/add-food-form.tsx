@@ -10,10 +10,27 @@ import {
   inputClass,
   primaryButtonClass,
 } from "@/components/form-fields";
-import { amountFor, MEALS, type CatalogItem, type MealId } from "@/lib/diary";
+import {
+  amountFor,
+  isPreparedFood,
+  MEALS,
+  type CatalogItem,
+  type MealId,
+} from "@/lib/diary";
 import { parseNumber } from "@/lib/nutrition";
 
 const initialState: AddEntryState = { errors: {} };
+
+const TABS = [
+  { id: "products", label: "Продукты" },
+  { id: "dishes", label: "Блюда" },
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
+
+function tabOf(category: string): Tab {
+  return isPreparedFood(category) ? "dishes" : "products";
+}
 
 type AddFoodFormProps = {
   items: CatalogItem[];
@@ -30,17 +47,31 @@ export function AddFoodForm({
     addEntryAction,
     initialState,
   );
+  const [tab, setTab] = useState<Tab>("products");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [grams, setGrams] = useState("100");
 
   const search = query.trim().toLowerCase();
-  const found = items.filter(
-    (item) =>
-      (category === "all" || item.category === category) &&
-      item.name.toLowerCase().includes(search),
+  const matching = items.filter((item) =>
+    item.name.toLowerCase().includes(search),
   );
+  const found = matching.filter(
+    (item) =>
+      tabOf(item.category) === tab &&
+      (category === "all" || item.category === category),
+  );
+
+  const otherTab = TABS.find((option) => option.id !== tab)!;
+  const foundInOtherTab = matching.filter(
+    (item) => tabOf(item.category) === otherTab.id,
+  ).length;
+
+  function switchTab(next: Tab) {
+    setTab(next);
+    setCategory("all");
+  }
 
   const selected = items.find((item) => item.key === selectedKey);
   const portion = parseNumber(grams);
@@ -51,15 +82,29 @@ export function AddFoodForm({
       <input type="hidden" name="item" value={selectedKey ?? ""} />
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="search" className="text-sm text-ink-muted">
-          Продукт или блюдо
+        <div role="group" aria-label="Что добавить" className="flex gap-1 rounded-xl bg-tint p-1">
+          {TABS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={option.id === tab}
+              onClick={() => switchTab(option.id)}
+              className="flex-1 rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors aria-pressed:bg-surface aria-pressed:font-medium aria-pressed:text-ink"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <label htmlFor="search" className="sr-only">
+          Поиск
         </label>
         <input
           id="search"
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Гречка"
+          placeholder={tab === "products" ? "Гречка" : "Борщ"}
           autoComplete="off"
           className={inputClass}
         />
@@ -70,11 +115,13 @@ export function AddFoodForm({
           className={inputClass}
         >
           <option value="all">Все категории</option>
-          {categories.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
+          {categories
+            .filter((option) => tabOf(option.id) === tab)
+            .map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
         </select>
 
         {found.length > 0 ? (
@@ -101,15 +148,23 @@ export function AddFoodForm({
           </p>
         )}
 
+        {search && found.length === 0 && foundInOtherTab > 0 && (
+          <button
+            type="button"
+            onClick={() => switchTab(otherTab.id)}
+            className="rounded-xl border border-line px-3 py-2 text-sm transition-colors hover:bg-tint"
+          >
+            Показать в разделе «{otherTab.label}»: {foundInOtherTab}
+          </button>
+        )}
+
         {!selected && <FieldError message={state.errors.item} />}
-        <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm text-ink-muted">
-          <Link href="/products/new" className="hover:underline">
-            Создать продукт →
-          </Link>
-          <Link href="/dishes/new" className="hover:underline">
-            Создать блюдо →
-          </Link>
-        </div>
+        <Link
+          href={tab === "products" ? "/products/new" : "/dishes/new"}
+          className="text-sm text-ink-muted hover:underline"
+        >
+          {tab === "products" ? "Создать продукт →" : "Создать блюдо →"}
+        </Link>
       </div>
 
       <div className="flex flex-col gap-1.5">

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   amountFor,
   dishNutrition,
+  isPreparedFood,
   mealForHour,
   parseEntry,
   parseNewDish,
@@ -92,6 +93,13 @@ test("вес готового блюда меняет значения на 100 
 
   assert.equal(result.totalKcal, 300);
   assert.equal(result.kcal, 120);
+});
+
+test("блюда и готовая еда отделены от продуктов", () => {
+  assert.equal(isPreparedFood("dishes"), true);
+  assert.equal(isPreparedFood("ready"), true);
+  assert.equal(isPreparedFood("meat"), false);
+  assert.equal(isPreparedFood("other"), false);
 });
 
 test("пустое блюдо не ломает расчёт", () => {
