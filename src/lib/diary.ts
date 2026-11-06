@@ -54,6 +54,96 @@ export function amountFor(per100: number, grams: number) {
   return (per100 * grams) / 100;
 }
 
+export type NewDish = {
+  name: string;
+  cookedGrams: number | null;
+  ingredients: { productId: number; grams: number }[];
+};
+
+export type DishField = "name" | "cookedGrams" | "ingredients";
+export type DishErrors = Partial<Record<DishField, string>>;
+
+type Nutrients = Pick<Product, "kcal" | "protein" | "fat" | "carbs">;
+
+// Та же формула, что в представлении dish_nutrition: сумма по продуктам,
+// делённая на вес готового блюда или, если его нет, на вес ингредиентов.
+export function dishNutrition(
+  ingredients: (Nutrients & { grams: number })[],
+  cookedGrams: number | null,
+) {
+  const rawGrams = ingredients.reduce((total, row) => total + row.grams, 0);
+  const totalGrams = cookedGrams ?? rawGrams;
+  const total = (key: keyof Nutrients) =>
+    ingredients.reduce((sum, row) => sum + amountFor(row[key], row.grams), 0);
+
+  const per100 = (key: keyof Nutrients) =>
+    totalGrams > 0 ? (total(key) / totalGrams) * 100 : 0;
+
+  return {
+    totalGrams,
+    totalKcal: total("kcal"),
+    kcal: per100("kcal"),
+    protein: per100("protein"),
+    fat: per100("fat"),
+    carbs: per100("carbs"),
+  };
+}
+
+type DishResult =
+  | { ok: true; dish: NewDish }
+  | { ok: false; errors: DishErrors };
+
+function parseIngredients(json: string) {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(json);
+  } catch {
+    return null;
+  }
+
+  if (!Array.isArray(rows)) return null;
+
+  return rows.map((row: { productId?: unknown; grams?: unknown }) => ({
+    productId: Number(row?.productId),
+    grams: parseNumber(String(row?.grams ?? "")),
+  }));
+}
+
+export function parseNewDish(raw: Record<DishField, string>): DishResult {
+  const errors: DishErrors = {};
+
+  const name = raw.name.trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) {
+    errors.name = "Укажи название от 2 до 80 символов";
+  }
+
+  const hasCooked = raw.cookedGrams.trim() !== "";
+  const cooked = hasCooked ? parseNumber(raw.cookedGrams) : null;
+  if (cooked !== null && !(cooked >= 1 && cooked <= 50000)) {
+    errors.cookedGrams = "Укажи вес от 1 до 50 000 г или оставь поле пустым";
+  }
+
+  const ingredients = parseIngredients(raw.ingredients) ?? [];
+  const ids = ingredients.map((row) => row.productId);
+
+  if (ingredients.length === 0) {
+    errors.ingredients = "Добавь хотя бы один продукт";
+  } else if (
+    ids.some((id) => !Number.isInteger(id) || id <= 0) ||
+    new Set(ids).size !== ids.length
+  ) {
+    errors.ingredients = "Проверь список продуктов";
+  } else if (ingredients.some((row) => !(row.grams >= 1 && row.grams <= 20000))) {
+    errors.ingredients = "Укажи вес каждого продукта от 1 до 20 000 г";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors };
+  }
+
+  return { ok: true, dish: { name, cookedGrams: cooked, ingredients } };
+}
+
 type EntryResult =
   | { ok: true; entry: NewEntry }
   | { ok: false; errors: EntryErrors };

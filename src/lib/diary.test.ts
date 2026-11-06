@@ -3,10 +3,100 @@ import { test } from "node:test";
 
 import {
   amountFor,
+  dishNutrition,
   mealForHour,
   parseEntry,
+  parseNewDish,
   parseNewProduct,
 } from "./diary.ts";
+
+const dish = {
+  name: "Каша",
+  cookedGrams: "",
+  ingredients: '[{"productId":1,"grams":"100"},{"productId":2,"grams":"50,5"}]',
+};
+
+test("блюдо принимает верные данные и чистит название", () => {
+  const result = parseNewDish({ ...dish, name: "  Каша   с ягодами " });
+  assert.deepEqual(result, {
+    ok: true,
+    dish: {
+      name: "Каша с ягодами",
+      cookedGrams: null,
+      ingredients: [
+        { productId: 1, grams: 100 },
+        { productId: 2, grams: 50.5 },
+      ],
+    },
+  });
+});
+
+test("вес готового блюда необязателен, но должен быть разумным", () => {
+  const ok = parseNewDish({ ...dish, cookedGrams: "300" });
+  assert.equal(ok.ok, true);
+  if (ok.ok) assert.equal(ok.dish.cookedGrams, 300);
+
+  for (const cookedGrams of ["0", "abc", "-5", "100000"]) {
+    const result = parseNewDish({ ...dish, cookedGrams });
+    assert.equal(result.ok, false, cookedGrams);
+    if (!result.ok) assert.ok(result.errors.cookedGrams);
+  }
+});
+
+test("блюдо отклоняет неверный список продуктов", () => {
+  const broken = [
+    "",
+    "not json",
+    "{}",
+    "[]",
+    "[null]",
+    '[{"productId":0,"grams":"100"}]',
+    '[{"productId":1,"grams":"0"}]',
+    '[{"productId":1,"grams":""}]',
+    '[{"productId":1,"grams":"10"},{"productId":1,"grams":"20"}]',
+  ];
+
+  for (const ingredients of broken) {
+    const result = parseNewDish({ ...dish, ingredients });
+    assert.equal(result.ok, false, ingredients);
+    if (!result.ok) assert.ok(result.errors.ingredients, ingredients);
+  }
+});
+
+test("блюдо требует название", () => {
+  const result = parseNewDish({ ...dish, name: " " });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.ok(result.errors.name);
+});
+
+test("питательность блюда считается по весу ингредиентов", () => {
+  const result = dishNutrition(
+    [
+      { grams: 100, kcal: 300, protein: 10, fat: 5, carbs: 50 },
+      { grams: 300, kcal: 40, protein: 2, fat: 1, carbs: 5 },
+    ],
+    null,
+  );
+
+  assert.equal(result.totalGrams, 400);
+  assert.equal(result.totalKcal, 420);
+  assert.equal(result.kcal, 105);
+  assert.equal(result.protein, 4);
+});
+
+test("вес готового блюда меняет значения на 100 г, но не общие калории", () => {
+  const result = dishNutrition(
+    [{ grams: 100, kcal: 300, protein: 10, fat: 5, carbs: 50 }],
+    250,
+  );
+
+  assert.equal(result.totalKcal, 300);
+  assert.equal(result.kcal, 120);
+});
+
+test("пустое блюдо не ломает расчёт", () => {
+  assert.equal(dishNutrition([], null).kcal, 0);
+});
 
 const product = {
   name: "Сырники",

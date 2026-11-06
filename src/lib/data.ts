@@ -9,6 +9,7 @@ import {
   MEALS,
   type CatalogItem,
   type ItemKind,
+  type NewDish,
   type NewEntry,
   type NewProduct,
   type Product,
@@ -178,6 +179,43 @@ export function createProduct(product: NewProduct) {
       product.fat,
       product.carbs,
     );
+}
+
+export function productsExist(ids: number[]) {
+  const query = getDb().prepare("SELECT 1 FROM products WHERE id = ?");
+  return ids.every((id) => query.get(id) !== undefined);
+}
+
+export function dishNameTaken(name: string) {
+  const rows = getDb().prepare("SELECT name FROM dishes").all() as {
+    name: string;
+  }[];
+  const lowered = name.toLowerCase();
+  return rows.some((row) => row.name.toLowerCase() === lowered);
+}
+
+export function createDish(dish: NewDish) {
+  const db = getDb();
+
+  // Блюдо и его состав сохраняем вместе: без состава блюдо бессмысленно.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const { lastInsertRowid } = db
+      .prepare("INSERT INTO dishes (name, cooked_grams) VALUES (?, ?)")
+      .run(dish.name, dish.cookedGrams);
+
+    const insert = db.prepare(
+      "INSERT INTO dish_ingredients (dish_id, product_id, grams) VALUES (?, ?, ?)",
+    );
+    for (const row of dish.ingredients) {
+      insert.run(lastInsertRowid, row.productId, row.grams);
+    }
+
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function addDiaryEntry(entry: NewEntry, date: Date) {

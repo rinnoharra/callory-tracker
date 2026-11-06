@@ -102,12 +102,14 @@ export function AddFoodForm({
         )}
 
         {!selected && <FieldError message={state.errors.item} />}
-        <Link
-          href="/products/new"
-          className="text-sm text-ink-muted hover:underline"
-        >
-          Создать свой продукт →
-        </Link>
+        <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm text-ink-muted">
+          <Link href="/products/new" className="hover:underline">
+            Создать продукт →
+          </Link>
+          <Link href="/dishes/new" className="hover:underline">
+            Создать блюдо →
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
